@@ -1,0 +1,489 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>prestashop.prestashop &mdash; Tryton Prestashop Integration 2.8.0.1dev documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '2.8.0.1dev',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="Tryton Prestashop Integration 2.8.0.1dev documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li><a href="../../index.html">Tryton Prestashop Integration 2.8.0.1dev documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for prestashop.prestashop</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    prestashop</span>
+
+<span class="sd">    :copyright: (c) 2013 by Openlabs Technologies &amp; Consulting (P) Limited</span>
+<span class="sd">    :license: GPLv3, see LICENSE for more details.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+
+<span class="kn">import</span> <span class="nn">pytz</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">import</span> <span class="nn">pystashop</span>
+<span class="kn">from</span> <span class="nn">mockstashop</span> <span class="kn">import</span> <span class="n">MockstaShopWebservice</span>
+<span class="kn">from</span> <span class="nn">trytond.model</span> <span class="kn">import</span> <span class="n">ModelSQL</span><span class="p">,</span> <span class="n">ModelView</span><span class="p">,</span> <span class="n">fields</span>
+<span class="kn">from</span> <span class="nn">trytond.pyson</span> <span class="kn">import</span> <span class="n">Eval</span>
+<span class="kn">from</span> <span class="nn">trytond.transaction</span> <span class="kn">import</span> <span class="n">Transaction</span>
+<span class="kn">from</span> <span class="nn">trytond.pool</span> <span class="kn">import</span> <span class="n">Pool</span>
+<span class="kn">from</span> <span class="nn">trytond.wizard</span> <span class="kn">import</span> <span class="n">Wizard</span><span class="p">,</span> <span class="n">StateView</span><span class="p">,</span> <span class="n">Button</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;Site&#39;</span><span class="p">,</span>
+    <span class="s">&#39;ImportWizardView&#39;</span><span class="p">,</span> <span class="s">&#39;ImportWizard&#39;</span><span class="p">,</span>
+    <span class="s">&#39;ExportWizardView&#39;</span><span class="p">,</span> <span class="s">&#39;ExportWizard&#39;</span><span class="p">,</span>
+    <span class="s">&#39;ConnectionWizardView&#39;</span><span class="p">,</span> <span class="s">&#39;ConnectionWizard&#39;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">TIMEZONES</span> <span class="o">=</span> <span class="p">[(</span><span class="n">x</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">pytz</span><span class="o">.</span><span class="n">common_timezones</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="Site"><a class="viewcode-back" href="../../configuration.html#prestashop.prestashop.Site">[docs]</a><span class="k">class</span> <span class="nc">Site</span><span class="p">(</span><span class="n">ModelSQL</span><span class="p">,</span> <span class="n">ModelView</span><span class="p">):</span>
+    <span class="s">&quot;Prestashop Site&quot;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.site&#39;</span>
+    <span class="n">_rec_name</span> <span class="o">=</span> <span class="s">&#39;url&#39;</span>
+
+    <span class="c">#: The URL of prestashop site</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Char</span><span class="p">(</span><span class="s">&#39;URL&#39;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="c">#: The webservices key for access to site</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Char</span><span class="p">(</span><span class="s">&#39;Key&#39;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="c">#: Company to which this site is linked</span>
+    <span class="n">company</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Many2One</span><span class="p">(</span><span class="s">&#39;company.company&#39;</span><span class="p">,</span> <span class="s">&#39;Company&#39;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="c">#: Last time at which the orders were imported from prestashop</span>
+    <span class="n">last_order_import_time</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">DateTime</span><span class="p">(</span><span class="s">&#39;Last order import time&#39;</span><span class="p">)</span>
+
+    <span class="c">#: Last time at which the orders were exported to prestashop</span>
+    <span class="n">last_order_export_time</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">DateTime</span><span class="p">(</span><span class="s">&#39;Last order export time&#39;</span><span class="p">)</span>
+
+    <span class="c">#: Used to set expense account while creating products.</span>
+    <span class="n">default_account_expense</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Property</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">Many2One</span><span class="p">(</span>
+        <span class="s">&#39;account.account&#39;</span><span class="p">,</span> <span class="s">&#39;Account Expense&#39;</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="p">[</span>
+            <span class="p">(</span><span class="s">&#39;kind&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="s">&#39;expense&#39;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s">&#39;company&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">Eval</span><span class="p">(</span><span class="s">&#39;context&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;company&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">],</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">))</span>
+
+    <span class="c">#: Used to set revenue account while creating products.</span>
+    <span class="n">default_account_revenue</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Property</span><span class="p">(</span><span class="n">fields</span><span class="o">.</span><span class="n">Many2One</span><span class="p">(</span>
+        <span class="s">&#39;account.account&#39;</span><span class="p">,</span> <span class="s">&#39;Account Revenue&#39;</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="p">[</span>
+            <span class="p">(</span><span class="s">&#39;kind&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="s">&#39;revenue&#39;</span><span class="p">),</span>
+            <span class="p">(</span><span class="s">&#39;company&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="n">Eval</span><span class="p">(</span><span class="s">&#39;context&#39;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;company&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">],</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">))</span>
+
+    <span class="c">#: Imported Sale Orders are created in this warehouse.</span>
+    <span class="n">default_warehouse</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Many2One</span><span class="p">(</span>
+        <span class="s">&#39;stock.location&#39;</span><span class="p">,</span> <span class="s">&#39;Warehouse&#39;</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="p">[(</span><span class="s">&#39;type&#39;</span><span class="p">,</span> <span class="s">&#39;=&#39;</span><span class="p">,</span> <span class="s">&#39;warehouse&#39;</span><span class="p">)],</span>
+        <span class="n">required</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">)</span>
+
+    <span class="c">#: The timezone set on prestashop site</span>
+    <span class="c">#: The orders imported will bear time in this timezone and that will need</span>
+    <span class="c">#: to be converted to UTC</span>
+    <span class="c">#: Also in order to determine what orders are to be imported, we need</span>
+    <span class="c">#: to convert UTC to this timezone to ensure correct time interval</span>
+    <span class="n">timezone</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Selection</span><span class="p">(</span>
+        <span class="n">TIMEZONES</span><span class="p">,</span> <span class="s">&#39;Timezone&#39;</span><span class="p">,</span> <span class="n">translate</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="bp">True</span>
+    <span class="p">)</span>
+
+    <span class="c">#: Allowed languages to be synced for the site</span>
+    <span class="n">languages</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">One2Many</span><span class="p">(</span>
+        <span class="s">&#39;prestashop.site.lang&#39;</span><span class="p">,</span> <span class="s">&#39;site&#39;</span><span class="p">,</span> <span class="s">&#39;Languages&#39;</span>
+    <span class="p">)</span>
+
+    <span class="c">#: The mapping between prestashop order states and tryton sale states</span>
+    <span class="n">order_states</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">One2Many</span><span class="p">(</span>
+        <span class="s">&#39;prestashop.site.order_state&#39;</span><span class="p">,</span> <span class="s">&#39;site&#39;</span><span class="p">,</span> <span class="s">&#39;Order States&#39;</span>
+    <span class="p">)</span>
+
+    <span class="c">#: Set this to True to handle invoicing in tryton and get invoice info</span>
+    <span class="c">#: TODO: A provision to be implemented in future versions</span>
+    <span class="c">#: Also handle multiple payment methods where each will have different</span>
+    <span class="c">#: journal and account setups</span>
+    <span class="n">handle_invoice</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Boolean</span><span class="p">(</span><span class="s">&#39;Handle Invoicing ?&#39;</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">__setup__</span><span class="p">(</span><span class="n">cls</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Site</span><span class="p">,</span> <span class="n">cls</span><span class="p">)</span><span class="o">.</span><span class="n">__setup__</span><span class="p">()</span>
+        <span class="n">cls</span><span class="o">.</span><span class="n">_error_messages</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+            <span class="s">&#39;prestashop_settings_missing&#39;</span><span class="p">:</span> \
+                <span class="s">&#39;Prestashop webservice settings are incomplete.&#39;</span><span class="p">,</span>
+            <span class="s">&#39;multiple_sites&#39;</span><span class="p">:</span> \
+                <span class="s">&#39;Test connection can be done for only one site at a time.&#39;</span><span class="p">,</span>
+            <span class="s">&#39;wrong_url_n_key&#39;</span><span class="p">:</span> <span class="s">&#39;Connection Failed! Please check URL and Key&#39;</span><span class="p">,</span>
+            <span class="s">&#39;wrong_url&#39;</span><span class="p">:</span> <span class="s">&#39;Connection Failed! The URL provided is wrong&#39;</span><span class="p">,</span>
+            <span class="s">&#39;languages_already_imported&#39;</span><span class="p">:</span> <span class="s">&#39;Languages have already been &#39;</span>
+                <span class="s">&#39;imported before. To import and setup again, delete the &#39;</span>
+                <span class="s">&#39;Languages first.&#39;</span><span class="p">,</span>
+            <span class="s">&#39;languages_not_imported&#39;</span><span class="p">:</span> \
+                <span class="s">&#39;Import the languages before importing order states&#39;</span><span class="p">,</span>
+            <span class="s">&#39;order_states_already_imported&#39;</span><span class="p">:</span> <span class="s">&#39;Order States have already been &#39;</span>
+                <span class="s">&#39;imported before. To import  and setup again, delete the &#39;</span>
+                <span class="s">&#39;Order States first.&#39;</span><span class="p">,</span>
+        <span class="p">})</span>
+        <span class="n">cls</span><span class="o">.</span><span class="n">_buttons</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+            <span class="s">&#39;test_connection&#39;</span><span class="p">:</span> <span class="p">{},</span>
+            <span class="s">&#39;import_languages&#39;</span><span class="p">:</span> <span class="p">{},</span>
+            <span class="s">&#39;import_order_states&#39;</span><span class="p">:</span> <span class="p">{},</span>
+            <span class="s">&#39;import_orders&#39;</span><span class="p">:</span> <span class="p">{},</span>
+            <span class="s">&#39;export_orders&#39;</span><span class="p">:</span> <span class="p">{},</span>
+        <span class="p">})</span>
+
+    <span class="k">def</span> <span class="nf">get_prestashop_client</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns an authenticated instance of the Prestashop client</span>
+
+<span class="sd">        :return: Prestashop client object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">]):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;prestashop_settings_missing&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">Transaction</span><span class="p">()</span><span class="o">.</span><span class="n">context</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;ps_test&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">MockstaShopWebservice</span><span class="p">(</span><span class="s">&#39;Some URL&#39;</span><span class="p">,</span> <span class="s">&#39;A Key&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">pystashop</span><span class="o">.</span><span class="n">PrestaShopWebservice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="nd">@ModelView.button</span>
+    <span class="k">def</span> <span class="nf">import_languages</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Import Languages from remote and try to link them to tryton</span>
+<span class="sd">        languages</span>
+
+<span class="sd">        :returns: List of languages created</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">SiteLanguage</span> <span class="o">=</span> <span class="n">Pool</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;prestashop.site.lang&#39;</span><span class="p">)</span>
+        <span class="n">Language</span> <span class="o">=</span> <span class="n">Pool</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;ir.lang&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sites</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;multiple_sites&#39;</span><span class="p">)</span>
+        <span class="n">site</span> <span class="o">=</span> <span class="n">sites</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c"># If site languages already exist, then raise an error</span>
+        <span class="k">if</span> <span class="n">site</span><span class="o">.</span><span class="n">languages</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;languages_already_imported&#39;</span><span class="p">)</span>
+
+        <span class="n">client</span> <span class="o">=</span> <span class="n">site</span><span class="o">.</span><span class="n">get_prestashop_client</span><span class="p">()</span>
+        <span class="n">languages</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">languages</span><span class="o">.</span><span class="n">get_list</span><span class="p">(</span><span class="n">display</span><span class="o">=</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+
+        <span class="n">new_records</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">lang</span> <span class="ow">in</span> <span class="n">languages</span><span class="p">:</span>
+            <span class="n">lang_data</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s">&#39;name&#39;</span><span class="p">:</span> <span class="n">lang</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">pyval</span><span class="p">,</span>
+                <span class="s">&#39;site&#39;</span><span class="p">:</span> <span class="n">site</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+                <span class="s">&#39;prestashop_id&#39;</span><span class="p">:</span> <span class="n">lang</span><span class="o">.</span><span class="n">id</span><span class="o">.</span><span class="n">pyval</span><span class="p">,</span>
+            <span class="p">}</span>
+
+            <span class="c"># Search for this language in tryton</span>
+            <span class="c"># Tryton stores the language code in form `en_US` or `en_GB`</span>
+            <span class="c"># While prestashop has language code in form `en`</span>
+            <span class="c"># We just match using the first two chars and return the first</span>
+            <span class="c"># record found. The user can later configure this according to his</span>
+            <span class="c"># needs.</span>
+            <span class="n">tryton_lang</span> <span class="o">=</span> <span class="n">Language</span><span class="o">.</span><span class="n">search</span><span class="p">([</span>
+                <span class="p">(</span><span class="s">&#39;code&#39;</span><span class="p">,</span> <span class="s">&#39;like&#39;</span><span class="p">,</span> <span class="s">&#39;</span><span class="si">%s%%</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">lang</span><span class="o">.</span><span class="n">iso_code</span><span class="o">.</span><span class="n">pyval</span><span class="p">)</span>
+            <span class="p">],</span> <span class="n">limit</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tryton_lang</span><span class="p">:</span>
+                <span class="n">lang_data</span><span class="p">[</span><span class="s">&#39;language&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">tryton_lang</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">id</span>
+
+            <span class="n">new_records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lang_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">SiteLanguage</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">new_records</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="nd">@ModelView.button</span>
+    <span class="k">def</span> <span class="nf">import_order_states</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Import Order States from remote and try to link them to tryton</span>
+<span class="sd">        order states</span>
+
+<span class="sd">        :returns: List of order states created</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">SiteOrderState</span> <span class="o">=</span> <span class="n">Pool</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;prestashop.site.order_state&#39;</span><span class="p">)</span>
+        <span class="n">Language</span> <span class="o">=</span> <span class="n">Pool</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;ir.lang&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sites</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;multiple_sites&#39;</span><span class="p">)</span>
+        <span class="n">site</span> <span class="o">=</span> <span class="n">sites</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c"># If site languages don&#39;t exist, then raise an error</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">site</span><span class="o">.</span><span class="n">languages</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;languages_not_imported&#39;</span><span class="p">)</span>
+
+        <span class="c"># If site order state already exist, then raise an error</span>
+        <span class="k">if</span> <span class="n">site</span><span class="o">.</span><span class="n">order_states</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;order_states_already_imported&#39;</span><span class="p">)</span>
+
+        <span class="n">client</span> <span class="o">=</span> <span class="n">site</span><span class="o">.</span><span class="n">get_prestashop_client</span><span class="p">()</span>
+        <span class="n">order_states</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">order_states</span><span class="o">.</span><span class="n">get_list</span><span class="p">(</span><span class="n">display</span><span class="o">=</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+
+        <span class="n">ps_english</span><span class="p">,</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">languages</span><span class="o">.</span><span class="n">get_list</span><span class="p">(</span><span class="n">filters</span><span class="o">=</span><span class="p">{</span>
+            <span class="s">&#39;iso_code&#39;</span><span class="p">:</span> <span class="s">&#39;en&#39;</span>
+        <span class="p">},</span> <span class="n">display</span><span class="o">=</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+
+        <span class="n">new_records</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">state</span> <span class="ow">in</span> <span class="n">order_states</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">lang</span> <span class="ow">in</span> <span class="n">state</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">getchildren</span><span class="p">():</span>
+                <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">lang</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;id&#39;</span><span class="p">))</span> <span class="o">==</span> <span class="n">ps_english</span><span class="o">.</span><span class="n">id</span><span class="o">.</span><span class="n">pyval</span><span class="p">:</span>
+                    <span class="n">name_in_english</span> <span class="o">=</span> <span class="n">lang</span><span class="o">.</span><span class="n">pyval</span>
+                    <span class="k">break</span>
+            <span class="n">state_data</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s">&#39;prestashop_state&#39;</span><span class="p">:</span> <span class="n">name_in_english</span><span class="p">,</span>
+                <span class="s">&#39;site&#39;</span><span class="p">:</span> <span class="n">site</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+            <span class="p">}</span>
+
+            <span class="c"># Map the tryton states according to the order states from</span>
+            <span class="c"># prestashop The user can later configure this according to his</span>
+            <span class="c"># needs.</span>
+            <span class="k">if</span> <span class="n">name_in_english</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;Shipped&#39;</span><span class="p">,</span> <span class="s">&#39;Delivered&#39;</span><span class="p">):</span>
+                <span class="n">state_data</span><span class="p">[</span><span class="s">&#39;order_state&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;shipment.sent&#39;</span>
+            <span class="k">elif</span> <span class="n">name_in_english</span> <span class="o">==</span> <span class="s">&#39;Canceled&#39;</span><span class="p">:</span>
+                <span class="n">state_data</span><span class="p">[</span><span class="s">&#39;order_state&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;sale.cancel&#39;</span>
+            <span class="k">elif</span> <span class="n">name_in_english</span> <span class="ow">in</span> <span class="p">(</span>
+                    <span class="s">&#39;Payment accepted&#39;</span><span class="p">,</span> <span class="s">&#39;Payment remotely accepted&#39;</span><span class="p">,</span>
+                    <span class="s">&#39;Preparation in progress&#39;</span>
+                <span class="p">):</span>
+                <span class="n">state_data</span><span class="p">[</span><span class="s">&#39;order_state&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;sale.processing&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">state_data</span><span class="p">[</span><span class="s">&#39;order_state&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;sale.confirmed&#39;</span>
+
+            <span class="n">new_records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">state_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">SiteOrderState</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">new_records</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="nd">@ModelView.button_action</span><span class="p">(</span><span class="s">&#39;prestashop.wizard_prestashop_connection&#39;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">test_connection</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Test Prestashop connection and display appropriate message to user</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sites</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;multiple_sites&#39;</span><span class="p">)</span>
+        <span class="n">site</span> <span class="o">=</span> <span class="n">sites</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">client</span> <span class="o">=</span> <span class="n">site</span><span class="o">.</span><span class="n">get_prestashop_client</span><span class="p">()</span>
+
+            <span class="c"># Try getting the list of shops</span>
+            <span class="c"># If it fails with prestashop error, then raise error</span>
+            <span class="n">client</span><span class="o">.</span><span class="n">shops</span><span class="o">.</span><span class="n">get_list</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">pystashop</span><span class="o">.</span><span class="n">PrestaShopWebserviceException</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;wrong_url_n_key&#39;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span>
+                <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">MissingSchema</span><span class="p">,</span>
+                <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">ConnectionError</span>
+            <span class="p">),</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="n">cls</span><span class="o">.</span><span class="n">raise_user_error</span><span class="p">(</span><span class="s">&#39;wrong_url&#39;</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">import_orders_from_prestashop</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Import orders from prestashop</span>
+
+<span class="sd">        :param sites: The list of sites from which the orders are to be</span>
+<span class="sd">                      imported</span>
+
+<span class="sd">        ..note:: This method is usually called by the cron</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># TODO: In future it should be possible to call each site separately.</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="nd">@ModelView.button_action</span><span class="p">(</span><span class="s">&#39;prestashop.wizard_prestashop_import&#39;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">import_orders</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Dummy button to fire up the wizard for import of orders</span>
+
+<span class="sd">        :param sites: The list of sites from which the orders are to be</span>
+<span class="sd">                      imported</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">import_orders_from_prestashop_site</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Import orders for the current site from prestashop</span>
+<span class="sd">        Import only those orers which are updated after the</span>
+<span class="sd">        `last order import time` as set in the prestashop configuration</span>
+
+<span class="sd">        :returns: The list of active records of sales imported</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">export_orders_to_prestashop</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Export order status to prestashop</span>
+
+<span class="sd">        :param sites: The list of sites to which the orders are to be</span>
+<span class="sd">                      exported</span>
+
+<span class="sd">        ..note:: This method is usually called by the cron</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="nd">@ModelView.button_action</span><span class="p">(</span><span class="s">&#39;prestashop.wizard_prestashop_export&#39;</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">export_orders</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">sites</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Dummy button to fire up the wizard for export of orders</span>
+
+<span class="sd">        :param sites: The list of sites to which the orders are to be</span>
+<span class="sd">                      exported</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">export_orders_to_prestashop_site</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Export order status to prestashop current site</span>
+<span class="sd">        Export only those orders which are modified after the</span>
+<span class="sd">        `last order export time` as set in the prestashop configuration.</span>
+
+<span class="sd">        :returns: The list of active records of sales exported</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+</div>
+<span class="k">class</span> <span class="nc">ConnectionWizardView</span><span class="p">(</span><span class="n">ModelView</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Connection Wizard View&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.connection.wizard.view&#39;</span>
+
+
+<span class="k">class</span> <span class="nc">ConnectionWizard</span><span class="p">(</span><span class="n">Wizard</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Connection Wizard&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.connection.wizard&#39;</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="n">StateView</span><span class="p">(</span>
+        <span class="s">&#39;prestashop.connection.wizard.view&#39;</span><span class="p">,</span>
+        <span class="s">&#39;prestashop.prestashop_connection_wizard_view_form&#39;</span><span class="p">,</span>
+        <span class="p">[</span>
+            <span class="n">Button</span><span class="p">(</span><span class="s">&#39;Ok&#39;</span><span class="p">,</span> <span class="s">&#39;end&#39;</span><span class="p">,</span> <span class="s">&#39;tryton-ok&#39;</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">default_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Test the connection and show the user appropriate message</span>
+
+<span class="sd">        :param data: Wizard data</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+
+<span class="k">class</span> <span class="nc">ImportWizardView</span><span class="p">(</span><span class="n">ModelView</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Import Wizard View&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.import.wizard.view&#39;</span>
+
+    <span class="n">orders_imported</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Integer</span><span class="p">(</span><span class="s">&#39;Orders Imported&#39;</span><span class="p">,</span> <span class="n">readonly</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">ImportWizard</span><span class="p">(</span><span class="n">Wizard</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Import Wizard&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.import.wizard&#39;</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="n">StateView</span><span class="p">(</span>
+        <span class="s">&#39;prestashop.import.wizard.view&#39;</span><span class="p">,</span>
+        <span class="s">&#39;prestashop.prestashop_import_wizard_view_form&#39;</span><span class="p">,</span>
+        <span class="p">[</span>
+            <span class="n">Button</span><span class="p">(</span><span class="s">&#39;Ok&#39;</span><span class="p">,</span> <span class="s">&#39;end&#39;</span><span class="p">,</span> <span class="s">&#39;tryton-ok&#39;</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">default_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Import the orders and display a confirmation message to the user</span>
+
+<span class="sd">        :param fields: Wizard fields</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+
+<span class="k">class</span> <span class="nc">ExportWizardView</span><span class="p">(</span><span class="n">ModelView</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Export Wizard View&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.export.wizard.view&#39;</span>
+
+    <span class="n">orders_exported</span> <span class="o">=</span> <span class="n">fields</span><span class="o">.</span><span class="n">Integer</span><span class="p">(</span><span class="s">&#39;Orders Exported&#39;</span><span class="p">,</span> <span class="n">readonly</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">ExportWizard</span><span class="p">(</span><span class="n">Wizard</span><span class="p">):</span>
+    <span class="s">&#39;Prestashop Export Wizard&#39;</span>
+    <span class="n">__name__</span> <span class="o">=</span> <span class="s">&#39;prestashop.export.wizard&#39;</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="n">StateView</span><span class="p">(</span>
+        <span class="s">&#39;prestashop.export.wizard.view&#39;</span><span class="p">,</span>
+        <span class="s">&#39;prestashop.prestashop_export_wizard_view_form&#39;</span><span class="p">,</span>
+        <span class="p">[</span>
+            <span class="n">Button</span><span class="p">(</span><span class="s">&#39;Ok&#39;</span><span class="p">,</span> <span class="s">&#39;end&#39;</span><span class="p">,</span> <span class="s">&#39;tryton-ok&#39;</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">default_start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fields</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Export the orders and display a confirmation message to the user</span>
+
+<span class="sd">        :param fields: Wizard fields</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li><a href="../../index.html">Tryton Prestashop Integration 2.8.0.1dev documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2013, Openlabs Technologies &amp; Consulting (P) Ltd..
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.2b1.
+    </div>
+  </body>
+</html>
